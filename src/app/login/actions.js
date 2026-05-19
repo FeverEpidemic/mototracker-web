@@ -14,7 +14,7 @@ export async function login(formData) {
   const { error } = await supabase.auth.signInWithPassword(data)
   
   if (error) {
-    redirect('/login?error=' + error.message)
+    redirect('/login?error=' + encodeURIComponent(error.message))
   }
 
   revalidatePath('/dashboard', 'layout')
@@ -28,10 +28,15 @@ export async function signup(formData) {
     password: formData.get('password'),
   }
 
-  const { error } = await supabase.auth.signUp(data)
+  const { data: signUpData, error } = await supabase.auth.signUp(data)
   
   if (error) {
-    redirect('/login?error=' + error.message)
+    redirect('/login?error=' + encodeURIComponent(error.message))
+  }
+
+  if (signUpData?.session) {
+    revalidatePath('/dashboard', 'layout')
+    redirect('/dashboard')
   }
 
   revalidatePath('/dashboard', 'layout')
@@ -46,10 +51,16 @@ export async function signInWithGoogle() {
       redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/auth/callback`,
     },
   })
+
+  if (error) {
+    redirect('/login?error=' + encodeURIComponent(error.message))
+  }
   
   if (data?.url) {
     redirect(data.url)
   }
+
+  redirect('/login?error=' + encodeURIComponent('Unable to start Google sign in.'))
 }
 
 export async function signOut() {

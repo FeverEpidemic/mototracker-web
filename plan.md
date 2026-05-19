@@ -20,6 +20,12 @@ Since the mobile app handles offline-first data via Hive, the Web application wi
 - Implement Login/Register screens matching the mobile aesthetic.
 - Setup Google Sign-In and Email/Password flows.
 
+### Phase 1.5: User Onboarding
+- Prevent users from seeing an empty dashboard by querying their garage on load.
+- If garage is empty, redirect to a focused, premium `/onboarding` screen.
+- Design `/onboarding` flow to capture the user's first motorcycle (Make, Model, Year, Odometer).
+- Securely insert the onboarding record into Supabase and redirect to `/dashboard`.
+
 ### Phase 2: Layout & Dashboard Core
 - Create persistent layout (Desktop Sidebar Navigation, Mobile Hamburger Menu).
 - Build the core Dashboard screen aggregating data (Total Distance, Active Reminders, Recent Trips).

@@ -84,11 +84,15 @@ export default function ClientTrips({ initialTrips, motorcycles }) {
       {/* Add Trip Modal */}
       <Modal 
         isOpen={isAddModalOpen} 
-        onClose={() => setAddModalOpen(false)} 
+        onClose={() => {
+          setSelectedMoto(null);
+          setAddModalOpen(false);
+        }} 
         title="Log New Trip"
       >
         <form action={async (formData) => {
           await addTrip(formData);
+          setSelectedMoto(null);
           setAddModalOpen(false);
         }} className={styles.form}>
           
@@ -127,12 +131,13 @@ export default function ClientTrips({ initialTrips, motorcycles }) {
                 name="previous_odometer" 
                 type="number" 
                 required 
+                key={selectedMoto?.id || 'empty-previous-odometer'}
                 defaultValue={selectedMoto?.current_odometer || ''}
               />
             </div>
             <div className={styles.inputGroup}>
               <label className={styles.label}>End Odometer</label>
-              <input className={styles.input} name="current_odometer" type="number" required />
+              <input className={styles.input} name="current_odometer" type="number" min={selectedMoto?.current_odometer || 0} required />
             </div>
           </div>
 
@@ -149,7 +154,10 @@ export default function ClientTrips({ initialTrips, motorcycles }) {
           </div>
 
           <div className={styles.formActions}>
-            <button type="button" className={styles.secondaryButton} onClick={() => setAddModalOpen(false)}>Cancel</button>
+            <button type="button" className={styles.secondaryButton} onClick={() => {
+              setSelectedMoto(null);
+              setAddModalOpen(false);
+            }}>Cancel</button>
             <button type="submit" className={styles.primaryButton}>Save Trip</button>
           </div>
         </form>

@@ -8,26 +8,32 @@ export const metadata = {
 export default async function TripsPage() {
   const supabase = await createClient()
   
-  // Fetch trips and join with motorcycle details
-  const { data: trips } = await supabase
-    .from('trips')
-    .select(`
-      *,
-      motorcycles (
-        name,
-        plate_number
-      )
-    `)
-    .is('deleted_at', null)
-    .order('trip_date', { ascending: false })
-    // Limit to 100 for now; infinite scroll can be added later
-    .limit(100)
-
-  // Fetch motorcycles for the dropdown
-  const { data: motorcycles } = await supabase
-    .from('motorcycles')
-    .select('id, name, current_odometer')
-    .is('deleted_at', null)
+  const [{ data: trips }, { data: motorcycles }] = await Promise.all([
+    supabase
+      .from('trips')
+      .select(`
+        id,
+        motorcycle_id,
+        category,
+        distance,
+        duration_minutes,
+        notes,
+        trip_date,
+        previous_odometer,
+        current_odometer,
+        motorcycles (
+          name,
+          plate_number
+        )
+      `)
+      .is('deleted_at', null)
+      .order('trip_date', { ascending: false })
+      .limit(100),
+    supabase
+      .from('motorcycles')
+      .select('id, name, current_odometer')
+      .is('deleted_at', null),
+  ])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>

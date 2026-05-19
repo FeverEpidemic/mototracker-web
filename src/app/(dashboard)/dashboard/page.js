@@ -1,26 +1,38 @@
 import { createClient } from '@/utils/supabase/server';
 import styles from './page.module.css';
 import Link from 'next/link';
+import { calculateReminderStatus } from '@/lib/reminder-utils';
 
 export default async function Home() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
 
-  // Fetch data
-  const { data: motorcycles } = await supabase.from('motorcycles').select('id, name, current_odometer').is('deleted_at', null);
-  const { data: reminders } = await supabase.from('service_reminders').select('*').is('deleted_at', null);
-  
-  // Calculate date 7 days ago
   const oneWeekAgo = new Date();
   oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-  const { data: recentTrips } = await supabase
-    .from('trips')
-    .select('id')
-    .is('deleted_at', null)
-    .gte('trip_date', oneWeekAgo.toISOString());
+
+  const [
+    { data: motorcycles },
+    { data: reminders },
+    { count: recentTripCount },
+    { data: serviceRecords },
+  ] = await Promise.all([
+    supabase.from('motorcycles').select('id, name, current_odometer').is('deleted_at', null),
+    supabase.from('service_reminders').select('id, motorcycle_id, service_type, last_service_odometer, interval_km, last_service_date, interval_months').is('deleted_at', null),
+    supabase
+      .from('trips')
+      .select('id', { count: 'exact', head: true })
+      .is('deleted_at', null)
+      .gte('trip_date', oneWeekAgo.toISOString()),
+    supabase.from('service_records').select('motorcycle_id, cost').is('deleted_at', null),
+  ]);
 
   // Metrics calculation
   const totalDistance = (motorcycles || []).reduce((sum, m) => sum + (m.current_odometer || 0), 0);
+  
+  const costMap = {};
+  (serviceRecords || []).forEach(record => {
+    const cost = parseFloat(record.cost) || 0;
+    costMap[record.motorcycle_id] = (costMap[record.motorcycle_id] || 0) + cost;
+  });
   
   let urgentReminders = [];
   let dueSoonCount = 0;
@@ -29,18 +41,37 @@ export default async function Home() {
   (reminders || []).forEach(reminder => {
     const moto = (motorcycles || []).find(m => m.id === reminder.motorcycle_id);
     if (moto) {
-      const remaining = reminder.interval_km - (moto.current_odometer - reminder.last_service_odometer);
-      if (remaining <= 0) {
+      const { status, kmRemaining, daysRemaining } = calculateReminderStatus(reminder, moto.current_odometer);
+      if (status === 'OVERDUE') {
         overdueCount++;
-        urgentReminders.push({ ...reminder, motoName: moto.name, status: 'OVERDUE', remaining });
-      } else if (remaining <= 500) {
+        urgentReminders.push({ ...reminder, motoName: moto.name, status, kmRemaining, daysRemaining });
+      } else if (status === 'DUE SOON') {
         dueSoonCount++;
-        urgentReminders.push({ ...reminder, motoName: moto.name, status: 'DUE SOON', remaining });
+        urgentReminders.push({ ...reminder, motoName: moto.name, status, kmRemaining, daysRemaining });
       }
     }
   });
 
   const totalUrgent = dueSoonCount + overdueCount;
+
+  const getRemainingMessage = (alert) => {
+    const parts = [];
+    if (alert.kmRemaining !== null) {
+      if (alert.kmRemaining <= 0) {
+        parts.push(`Overdue by ${Math.abs(alert.kmRemaining).toLocaleString()} km`);
+      } else {
+        parts.push(`Due in ${alert.kmRemaining.toLocaleString()} km`);
+      }
+    }
+    if (alert.daysRemaining !== null) {
+      if (alert.daysRemaining <= 0) {
+        parts.push(`Overdue by ${Math.abs(alert.daysRemaining)} ${Math.abs(alert.daysRemaining) === 1 ? 'day' : 'days'}`);
+      } else {
+        parts.push(`Due in ${alert.daysRemaining} ${alert.daysRemaining === 1 ? 'day' : 'days'}`);
+      }
+    }
+    return parts.join(' or ');
+  };
 
   return (
     <div className={styles.container}>
@@ -68,7 +99,26 @@ export default async function Home() {
           </div>
           <div className={styles.card}>
             <h3>Recent Trips</h3>
-            <p className={styles.cardValue}>{(recentTrips || []).length} <span className={styles.unit}>this week</span></p>
+            <p className={styles.cardValue}>{recentTripCount || 0} <span className={styles.unit}>this week</span></p>
+          </div>
+          <div className={styles.card}>
+            <h3>Total Service Cost</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.4rem' }}>
+              {(motorcycles || []).map(moto => {
+                const cost = costMap[moto.id] || 0;
+                return (
+                  <div key={moto.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem' }}>
+                    <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{moto.name}</span>
+                    <span style={{ fontWeight: 600, color: 'var(--foreground)' }}>
+                      Rp {cost.toLocaleString('id-ID')}
+                    </span>
+                  </div>
+                );
+              })}
+              {(motorcycles || []).length === 0 && (
+                <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>No motorcycles in garage</div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -89,10 +139,7 @@ export default async function Home() {
                   <div>
                     <strong style={{ color: 'var(--foreground)', fontSize: '1.1rem' }}>{alert.motoName}: {alert.service_type}</strong>
                     <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                      {alert.status === 'OVERDUE' 
-                        ? `Overdue by ${Math.abs(alert.remaining).toLocaleString()} km`
-                        : `Due in ${alert.remaining.toLocaleString()} km`
-                      }
+                      {getRemainingMessage(alert)}
                     </p>
                   </div>
                   <Link href="/service" className={styles.secondaryButton} style={{ backgroundColor: 'var(--surface)', borderColor: 'transparent' }}>

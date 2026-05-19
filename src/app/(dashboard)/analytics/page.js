@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server'
 import AnalyticsClient from './AnalyticsClient'
+import { redirect } from 'next/navigation'
 
 export const metadata = {
   title: 'Analytics | MotoTracker',
@@ -8,11 +9,15 @@ export const metadata = {
 export default async function AnalyticsPage() {
   const supabase = await createClient()
   
-  // Fetch trips for user
   const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect('/login')
+  }
+
   const { data: trips } = await supabase
     .from('trips')
-    .select(`*, motorcycles!inner(user_id)`)
+    .select('id, distance, category, trip_date, motorcycles!inner(user_id)')
     .eq('motorcycles.user_id', user.id)
     .is('deleted_at', null)
     .order('trip_date', { ascending: true })

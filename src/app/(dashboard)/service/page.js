@@ -8,25 +8,22 @@ export const metadata = {
 export default async function ServicePage() {
   const supabase = await createClient()
   
-  // Fetch motorcycles for forms and context
-  const { data: motorcycles } = await supabase
-    .from('motorcycles')
-    .select('id, name, current_odometer, plate_number')
-    .is('deleted_at', null)
-
-  // Fetch service reminders
-  const { data: reminders } = await supabase
-    .from('service_reminders')
-    .select('*')
-    .is('deleted_at', null)
-
-  // Fetch service records (history)
-  const { data: records } = await supabase
-    .from('service_records')
-    .select('*')
-    .is('deleted_at', null)
-    .order('service_date', { ascending: false })
-    .limit(100)
+  const [{ data: motorcycles }, { data: reminders }, { data: records }] = await Promise.all([
+    supabase
+      .from('motorcycles')
+      .select('id, name, current_odometer, plate_number')
+      .is('deleted_at', null),
+    supabase
+      .from('service_reminders')
+      .select('id, motorcycle_id, service_type, last_service_odometer, interval_km, last_service_date, interval_months')
+      .is('deleted_at', null),
+    supabase
+      .from('service_records')
+      .select('id, motorcycle_id, service_type, odometer, cost, notes, service_date')
+      .is('deleted_at', null)
+      .order('service_date', { ascending: false })
+      .limit(100),
+  ])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>

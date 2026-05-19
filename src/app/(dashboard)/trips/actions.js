@@ -1,72 +1,92 @@
 'use server'
 
-import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
+import {
+  assertSupabaseSuccess,
+  getAuthenticatedSupabase,
+  readInt,
+  readText,
+} from '@/lib/action-utils'
+import { randomUUID } from 'node:crypto'
 
 export async function addTrip(formData) {
-  const supabase = await createClient()
+  const { supabase, user } = await getAuthenticatedSupabase()
 
-  const motorcycle_id = formData.get('motorcycle_id')
-  const previous_odometer = parseInt(formData.get('previous_odometer'))
-  const current_odometer = parseInt(formData.get('current_odometer'))
+  const motorcycle_id = readText(formData, 'motorcycle_id')
+  const previous_odometer = readInt(formData, 'previous_odometer', { min: 0 })
+  const current_odometer = readInt(formData, 'current_odometer', { min: previous_odometer })
   const distance = current_odometer - previous_odometer
+  const { data: motorcycle, error: motorcycleError } = await supabase
+    .from('motorcycles')
+    .select('id, current_odometer')
+    .eq('id', motorcycle_id)
+    .eq('user_id', user.id)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  assertSupabaseSuccess(motorcycleError, 'Error validating motorcycle:')
+
+  if (!motorcycle) {
+    throw new Error('Motorcycle not found.')
+  }
 
   const newTrip = {
+    id: randomUUID(),
+    user_id: user.id,
     motorcycle_id,
     previous_odometer,
     current_odometer,
-    distance: distance > 0 ? distance : 0,
-    duration_minutes: parseInt(formData.get('duration_minutes')) || 0,
-    category: formData.get('category'),
-    notes: formData.get('notes'),
-    trip_date: formData.get('trip_date'),
+    distance,
+    duration_minutes: readInt(formData, 'duration_minutes', { min: 0, required: false }) || 0,
+    category: readText(formData, 'category'),
+    notes: readText(formData, 'notes', { required: false }),
+    trip_date: readText(formData, 'trip_date'),
   }
 
   const { error } = await supabase.from('trips').insert([newTrip])
-  if (error) {
-    console.error('Error adding trip:', error)
-    throw new Error(error.message)
-  }
+  assertSupabaseSuccess(error, 'Error adding trip:')
 
-  // Odometer Syncing Rule: Update if the new trip's odometer is higher
-  const { data: moto } = await supabase
-    .from('motorcycles')
-    .select('current_odometer')
-    .eq('id', motorcycle_id)
-    .single()
-
-  if (moto && current_odometer > moto.current_odometer) {
-    await supabase
+  if (current_odometer > motorcycle.current_odometer) {
+    const { error: odometerError } = await supabase
       .from('motorcycles')
       .update({ current_odometer })
       .eq('id', motorcycle_id)
+      .eq('user_id', user.id)
+
+    assertSupabaseSuccess(odometerError, 'Error syncing motorcycle odometer:')
   }
 
   revalidatePath('/trips')
   revalidatePath('/garage')
-  revalidatePath('/')
+  revalidatePath('/service')
+  revalidatePath('/dashboard')
+  revalidatePath('/analytics')
 }
 
 export async function updateTrip(formData) {
-  const supabase = await createClient()
+  const { supabase, user } = await getAuthenticatedSupabase()
   
-  const id = formData.get('id')
+  const id = readText(formData, 'id')
   const updates = {
-    category: formData.get('category'),
-    notes: formData.get('notes'),
-    trip_date: formData.get('trip_date'),
-    duration_minutes: parseInt(formData.get('duration_minutes')) || 0,
+    category: readText(formData, 'category'),
+    notes: readText(formData, 'notes', { required: false }),
+    trip_date: readText(formData, 'trip_date'),
+    duration_minutes: readInt(formData, 'duration_minutes', { min: 0, required: false }) || 0,
   }
 
-  const { error } = await supabase
+  const { error, count } = await supabase
     .from('trips')
-    .update(updates)
+    .update(updates, { count: 'exact' })
     .eq('id', id)
+    .eq('user_id', user.id)
 
-  if (error) {
-    console.error('Error updating trip:', error)
-    throw new Error(error.message)
+  assertSupabaseSuccess(error, 'Error updating trip:')
+
+  if (count === 0) {
+    throw new Error('Trip not found.')
   }
 
   revalidatePath('/trips')
+  revalidatePath('/dashboard')
+  revalidatePath('/analytics')
 }
