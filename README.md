@@ -100,7 +100,43 @@ docker run -d \
 
 ---
 
+### Option 3: Cross-Building for ARM64 (e.g., VPS Deployments)
+
+This project is fully optimized for **multi-architecture builds** using Docker Buildx. It leverages your host machine's native PC architecture to run heavy dependency installations and Next.js compilation extremely fast, while outputting a native `linux/arm64` image optimized for VPS hosting (e.g., Oracle Cloud ARM, AWS Graviton).
+
+#### 1. Setup Docker Buildx
+Ensure you have Buildx enabled (standard in modern Docker Desktop). Create and switch to a builder instance that supports cross-compilation:
+```bash
+docker buildx create --name mybuilder --use
+docker buildx inspect --bootstrap
+```
+
+#### 2. Build the ARM64 Image
+Run the `docker buildx build` command targeting `linux/arm64`. The `--load` flag compiles and imports the final image directly into your local Docker registry:
+
+```bash
+docker buildx build \
+  --platform linux/arm64 \
+  --build-arg NEXT_PUBLIC_SUPABASE_URL="your_supabase_url" \
+  --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="your_supabase_anon_key" \
+  -t mototracker-web:latest-arm64 --load .
+```
+
+#### 3. (Optional) Build and Push Directly to a Remote Registry
+To compile and automatically push the ARM64 image straight to Docker Hub or GHCR:
+
+```bash
+docker buildx build \
+  --platform linux/arm64 \
+  --build-arg NEXT_PUBLIC_SUPABASE_URL="your_supabase_url" \
+  --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="your_supabase_anon_key" \
+  -t your-docker-username/mototracker-web:latest-arm64 --push .
+```
+
+---
+
 ### Verifying the Deployment
 Once the container starts, open your browser and navigate to:
 [**http://localhost:3000**](http://localhost:3000)
+
 
